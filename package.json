@@ -1,0 +1,24 @@
+{
+  "name": "pandoc-tools",
+  "version": "1.0.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "module": "./dist/main.js",
+  "exports": {
+    ".": {
+      "import": "./dist/main.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^18.13.0",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}
