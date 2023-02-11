@@ -9,14 +9,19 @@ async function get_exec() {
 	exec = promisify(raw_exec);
 	return exec
 }
-export async function json2html(document: object) {
+
+export async function json2html(object) {
+	return convert(JSON.stringify(object), "json", "html")
+}
+
+export async function convert(document: string, formatFrom : string, formatTo: string) {
 	/* 
 	Transform pandoc-json formatted json to HTML by piping it through the 
 	*/
 
-	return new Promise((resolve, reject) => {
-		const child = raw_exec('pandoc -f json -t html');
-		child.stdin?.write(JSON.stringify(document) + '\n');
+	return new Promise<string>((resolve, reject) => {
+		const child = raw_exec(`pandoc -f ${formatFrom} -t ${formatTo}`);
+		child.stdin?.write((document) + '\n');
 		child.stdin?.end();
 		let response = '';
 
@@ -30,6 +35,7 @@ export async function json2html(document: object) {
 
 		child.on('close', (code) => {
 			if (code != 0) {
+				console.error(code)
 				reject();
 			} else {
 				resolve(response);
@@ -47,7 +53,7 @@ export async function json2html(document: object) {
  *          to implement this there, but it's dangerous for compatibility/filters.
  */
 function fold_spaces(array) {
-	if (array.indexOf(null) >= -1) {
+	if (array.indexOf(null) > -1) {
 		return array;
 	}
 	const r = array.reduceRight((accumulator, one_before) => {
@@ -61,7 +67,7 @@ function fold_spaces(array) {
 			const collapsed = collapse_spaces(one_before);
 			return [collapsed, first, ...rest];
 		}
-	}, []);
+	}, [])
 	return r.filter((d) => d !== undefined);
 }
 
@@ -88,43 +94,85 @@ function collapse_spaces(ast) {
 	return output;
 }
 
+const formats = {
+	'md': 'markdown',
+	'ipynb': 'ipynb',
+	'docx': 'docx'
+} as const;
+
+export type format = keyof typeof formats;
+
 async function parse_path(path) {
-	const exec = await get_exec()
-	const command = `pandoc -t json ${path} -f markdown+footnotes`;
-	const { stdout } = await exec(command);
-	return collapse_spaces(JSON.parse(stdout));
+	const extension = path.split('.').slice(-1)[0] as format
+	if (extension === 'docx') {
+		console.log(extension)
+		// Not a single file, so can't pipe through stdin.
+		const exec = await get_exec()
+		if (path.match('/\$\!\"/')) {
+			throw new Error("Can't handle paths with quotes in them.")
+		}
+		const command = `pandoc -t json "${path}" -f docx`;
+		const { stdout } = await exec(command);
+		return collapse_spaces(JSON.parse(stdout));
+	
+	}
+	const text = await fs.readFile(path, 'utf-8');
+	const converted = await convert(text, formats[extension], "json")
+	return collapse_spaces(JSON.parse(converted));
 }
 
-async function get_html(path) {
-	const exec = await get_exec()
-	const command = `pandoc -t html ${path}`;
-	const { stdout } = await exec(command);
-	return stdout;
+interface MetaAttributes {
+	created: string,
+	edited: string,
+	filename: string,
+	title: string,
+	date: string,
+	author?: string,
+} 
+
+type Metadata = MetaAttributes & Record<string, any>;
+
+async function yaml_metadata(path : string): Promise<Record<string, any>> {
+	let attributes : Metadata;
+	const statinfo = await fs.stat(path);
+	attributes = {
+		created: new Date(statinfo.ctimeMs).toISOString(),
+		edited: new Date(statinfo.ctimeMs).toISOString(),
+		filename: path.split("/").slice(-1)[0].replace(/.[^.]+$/, ''),
+		title: '__placeholder',
+		date: '__placeholder'
+	}
+	if (path.endsWith(".md")) {
+		const raw = await fs.readFile(path, 'utf-8');
+		const has_metadata = raw.slice(0, 4) === '---\n';
+		if (!has_metadata) {
+			return {};
+		}
+		const candidate1 = raw.slice(4).split('---')[0];
+		// Rarely, three dots are used as an end delimiter.
+		const candidate2 = raw.slice(4).split('...')[0];
+		let candidate: string;
+		if (candidate2.length < candidate1.length) {
+			candidate = candidate2;
+		} else {
+			candidate = candidate1;
+		}
+		if (candidate === undefined || candidate.length >= raw.length - 5) {
+			return {};
+		}
+		const meta = yaml.load(candidate)
+		attributes = {...attributes, ...meta };
+	}
+	if (attributes.title === '__placeholder') {
+		attributes.title = attributes.filename
+	}
+	if (attributes.date === '__placeholder') {
+		attributes.date = attributes.created
+	}
+	return attributes;
 }
 
-async function yaml_metadata(path): Promise<Record<string, any>> {
-	const raw = await fs.readFile(path, 'utf-8');
-	const has_metadata = raw.slice(0, 4) === '---\n';
-	if (!has_metadata) {
-		return {};
-	}
-	const candidate1 = raw.slice(4).split('---')[0];
-	// Rarely, three dots are used as an end delimiter.
-	const candidate2 = raw.slice(4).split('...')[0];
-	let candidate: string;
-	if (candidate2.length < candidate1.length) {
-		candidate = candidate2;
-	} else {
-		candidate = candidate1;
-	}
-	if (candidate === undefined || candidate.length >= raw.length - 5) {
-		return {};
-	}
-	const attributes = yaml.load(candidate);
-	return attributes || {};
-}
-
-export async function json_with_meta(path: string, cache_loc) {
+export async function json_with_meta(path: string, cache_loc = undefined) {
 	// Create a cache if none exists.
 	let cache_path;
 	if (cache_loc) {
@@ -147,11 +195,14 @@ export async function json_with_meta(path: string, cache_loc) {
 		}
 	}
 	const pandocced = parse_path(path);
-	const metadata = await yaml_metadata(path);
-	const value = await Promise.all([pandocced, metadata]).then(([document, metadata]) => ({
+	const metadata = yaml_metadata(path);
+
+	const value = await Promise.all([pandocced, metadata])
+	.then(([document, metadata]) => ({
 		metadata,
 		document
 	}));
+
 	if (cache_loc) {
 		await fs.writeFile(cache_path, JSON.stringify(value, undefined, 2));
 	}

@@ -19,3 +19,8 @@ export default defineConfig({
 	plugins: [pandoc_rollup_plugin({ cache_loc: 'posts_cache' }), sveltekit()]
 });
 ```
+
+
+## RELEASE NOTES
+
+1.0.1: collapse Space type to " " to reduce file sizes/complexity.

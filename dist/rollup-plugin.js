@@ -1,5 +1,5 @@
 import { json_with_meta, json2html } from './run-pandoc.js';
-const fileRegex = /\.md$/;
+const fileRegex = /\.(md|ipynb|docx)$/;
 /*
     Reads Markdown files by wrapping them as a big variable you can import.
 */
