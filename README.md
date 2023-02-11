@@ -23,4 +23,6 @@ export default defineConfig({
 
 ## RELEASE NOTES
 
+1.1.0: Support MS Word (docx) and Ipython notebook (.ipynb) files; set stage for supporting all pandoc inputs.
+
 1.0.1: collapse Space type to " " to reduce file sizes/complexity.
