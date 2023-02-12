@@ -6,10 +6,15 @@ a few gaps.
 
 Most importantly for me, it provides a *Rollup plugin* for importing markdown files directly inside a svelte-kit project *as JSON*. I can (and may) support html exports as well, but the JSON format is the place where pandoc allows really interesting things to happen.
 
+Currently supported formats:
+
+* markdown
+* IPython notebooks
+* Microsoft Word (docx) files.
 
 Usage in a vite project with sveltekit.
 
-```
+```js
 // vite.config.ts
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
@@ -20,6 +25,21 @@ export default defineConfig({
 });
 ```
 
+```js
+// src/routes/+page.svelte
+<script>
+
+import { metadata, document } from "front_page.md"
+import { Document } from 'pandoc-svelte-components'
+
+</script>
+
+<h1>{metadata.title}</h1>
+<em>{metadata.date}{/em}
+
+<Document ast={document}>
+
+```
 
 ## RELEASE NOTES
 
